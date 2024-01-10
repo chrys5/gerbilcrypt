@@ -22,7 +22,7 @@ IV_LENGTH = 16
 HASH_LENGTH = 32
 TAG_LENGTH = 16
 
-def encrypt_file(file, password, delete=True, rename=None):
+def encrypt_file(file, password, delete=True, rename=None, isdir=False):
     """
     Encrypt a file or directory with a password.
 
@@ -43,18 +43,17 @@ def encrypt_file(file, password, delete=True, rename=None):
     #get file name and extension
     dir = os.path.dirname(file)
     name = os.path.basename(file)
-    ext = ".zip"
-    isdir = os.path.isdir(file)
 
-    if isdir:
+    #zip directory if necessary
+    if not isdir and os.path.isdir(file):
         #zip the directory
         zipfile = shutil.make_archive(name, "zip", root_dir=os.path.join(dir, name))
+        encrypted_file = encrypt_file(zipfile, password, delete=True, rename=name, isdir=True)
         if delete:
             shutil.rmtree(file)
-        #move zipfile to dir
-        file = shutil.move(zipfile, dir)
-    else:
-        name, ext = os.path.splitext(name)
+        return encrypted_file
+    
+    name, ext = os.path.splitext(name)
 
     #generate salt, initialization vector
     salt = os.urandom(24)
@@ -119,7 +118,7 @@ def encrypt_file(file, password, delete=True, rename=None):
             infile.seek(-4 - metadata_size, os.SEEK_END)
             infile.truncate()
 
-    if delete or isdir:
+    if delete:
         os.remove(file)
     
     return encrypted_file
@@ -182,6 +181,7 @@ def decrypt_file(file, password, delete=True, rename=None):
 
         #decrypt file
         decrypted_file = os.path.join(dir, name + ".decrypting")
+        decryption_failed = False
         with open(decrypted_file, 'wb') as outfile:
             while True:
                 data = infile.read(BUFFSIZE)
@@ -192,15 +192,21 @@ def decrypt_file(file, password, delete=True, rename=None):
                     try:
                         decrypted_data += decryptor.finalize_with_tag(encryptor_tag)
                     except:
-                        #reappend tag to end of file
-                        infile.seek(0, os.SEEK_END)
-                        infile.write(encryptor_tag)
-                        return None
+                        decryption_failed = True
+                        break
                     decrypted_data = unpadder.update(decrypted_data) + unpadder.finalize()
                     outfile.write(decrypted_data)
                     break
                 else:
                     outfile.write(decrypted_data)
+
+        #reappend tag to end of file
+        infile.seek(0, os.SEEK_END)
+        infile.write(encryptor_tag)
+    
+        if decryption_failed:
+            os.remove(decrypted_file)
+            return None
 
     #get metadata from end of decrypted file and delete it
     with open(decrypted_file, 'r+b') as infile:
