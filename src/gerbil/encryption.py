@@ -36,10 +36,6 @@ def encrypt_file(file, password, delete=True, rename=None, isdir=False):
         str: The path to the encrypted file.
     """
 
-    assert os.path.exists(file), "File or directory does not exist"
-    assert type(password) == str, "Password must be a string"
-    assert rename == None or type(rename) == str, "Rename must be a string"
-
     #get file name and extension
     dir = os.path.dirname(file)
     name = os.path.basename(file)
@@ -50,7 +46,7 @@ def encrypt_file(file, password, delete=True, rename=None, isdir=False):
         zipfile = shutil.make_archive(name, "zip", root_dir=os.path.join(dir, name))
         encrypted_file = encrypt_file(zipfile, password, delete=True, rename=name, isdir=True)
         if delete:
-            shutil.rmtree(file)
+            secure_delete(file)
         return encrypted_file
     
     name, ext = os.path.splitext(name)
@@ -119,7 +115,7 @@ def encrypt_file(file, password, delete=True, rename=None, isdir=False):
             infile.truncate()
 
     if delete:
-        os.remove(file)
+        secure_delete(file)
     
     return encrypted_file
 
@@ -137,10 +133,6 @@ def decrypt_file(file, password, delete=True, rename=None):
         str: The path to the decrypted file.
         None: If the password is incorrect, the file is corrupted, or any other decryption error.
     """
-
-    assert os.path.exists(file), "File or directory does not exist"
-    assert type(password) == str, "Password must be a string"
-    assert rename == None or type(rename) == str, "Rename must be a string"
 
     dir = os.path.dirname(file)
     name = os.path.basename(file)
@@ -242,8 +234,33 @@ def decrypt_file(file, password, delete=True, rename=None):
         os.rename(decrypted_file, decrypted_file_renamed)
     
     if delete:
-        os.remove(file)
+        secure_delete(file)
 
     return decrypted_file_renamed
     
-    
+def secure_delete(file, passes=3):
+    """
+    Securely delete a file or directory.
+
+    Parameters:
+        file (str): The file or directory to be securely deleted.
+    """
+
+    if os.path.isdir(file):
+        for root, dirs, files in os.walk(file):
+            for name in files:
+                secure_delete(os.path.join(root, name))
+            for name in dirs:
+                secure_delete(os.path.join(root, name))
+        os.rmdir(file)
+    else:
+        with open(file, 'r+b') as infile:
+            infile.seek(0, os.SEEK_END)
+            file_size = infile.tell()
+            for _ in range(passes):
+                infile.seek(0, os.SEEK_SET)
+                while infile.tell() < file_size:
+                    infile.write(os.urandom(min(BUFFSIZE, file_size - infile.tell())))
+                infile.flush()
+                os.fsync(infile.fileno())
+        os.remove(file)

@@ -2,6 +2,7 @@
 
 import os
 import argparse
+import getpass
 
 from gerbil.encryption import *
 
@@ -10,11 +11,12 @@ def init_parser():
         description="a simple file encryptor",)
     parser.add_argument("function", 
                         help="the function to be executed", 
-                        choices=["encrypt", "decrypt"])
+                        choices=["encrypt", "decrypt", "delete"])
     parser.add_argument("file",
                         help="the file to be encrypted/decrypted",
                         type=str)
     parser.add_argument("password",
+                        nargs="?",
                         help="the input password",
                         type=str)
     parser.add_argument("-d", "--delete",
@@ -33,12 +35,15 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     file = os.path.abspath(args.file)
+    assert os.path.exists(file), "File or directory does not exist"
     password = args.password
     delete = args.delete
     rename = args.rename
     randomizename = args.randomizename
 
     if args.function == "encrypt":
+        if password == None:
+            password = getpass.getpass("Enter password: ")
         encrypted_file = encrypt_file(file, password, delete, rename)
         if randomizename:
             new_name = os.path.join(os.path.dirname(encrypted_file), os.urandom(12).hex().upper())
@@ -47,8 +52,14 @@ if __name__ == "__main__":
         print("Encrypted file: " + encrypted_file)
     
     if args.function == "decrypt":
+        if password == None:
+            password = getpass.getpass("Enter password: ")
         decrypted_file = decrypt_file(file, password, delete, rename)
         if decrypted_file == None:
             print("Decryption failed. Wrong password or file has been corrupted.")
         else:
             print("Decrypted file: " + decrypted_file)
+
+    if args.function == "delete":
+        secure_delete(file)
+        print("File deleted.")
